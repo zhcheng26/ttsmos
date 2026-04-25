@@ -16,7 +16,7 @@ thresholds:
   weighted: 2.5       # 综合分低于此值触发规则B
 
 asr:
-  model: small        # whisper 模型: tiny/base/small/medium/large-v3
+  model: tiny         # whisper 模型: tiny/base/small/medium/large-v3（演示用tiny，生产换medium）
 
 dnsmos:
   model_path: models/sig_bak_ovr.onnx   # DNSMOS P.835 ONNX 文件路径
