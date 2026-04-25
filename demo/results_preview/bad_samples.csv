@@ -1,0 +1,11 @@
+file,system,mos_score,sim_score,cer,prosody_score,weighted_score,is_bad,bad_reason
+sample_001,sysB,2.983,0.627,0.261,0.642,3.265,True,"mos,sim,cer"
+sample_002,sysB,3.221,0.459,0.029,0.483,3.3517,True,"sim,prosody"
+sample_003,sysB,3.833,0.627,0.155,0.379,3.5484,True,"sim,cer,prosody"
+sample_004,sysB,2.8,0.621,0.108,0.772,3.4955,True,"mos,sim"
+sample_005,sysB,3.204,0.454,0.057,0.574,3.3437,True,sim
+sample_006,sysB,2.361,0.578,0.118,0.677,3.237,True,"mos,sim"
+sample_007,sysB,2.762,0.711,0.222,0.662,3.3928,True,"mos,cer"
+sample_008,sysB,2.86,0.631,0.073,0.406,3.3997,True,"mos,sim,prosody"
+sample_009,sysB,3.281,0.585,0.175,0.735,3.4668,True,"sim,cer"
+sample_010,sysB,3.144,0.62,0.156,0.311,3.2943,True,"sim,cer,prosody"

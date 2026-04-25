@@ -1,5 +1,5 @@
 # config.yaml
-device: cuda          # cuda 或 cpu
+device: cpu           # cuda 或 cpu
 batch_size: 16
 
 weights:
@@ -16,7 +16,7 @@ thresholds:
   weighted: 2.5       # 综合分低于此值触发规则B
 
 asr:
-  model: medium       # whisper 模型: tiny/base/small/medium/large-v3
+  model: small        # whisper 模型: tiny/base/small/medium/large-v3
 
 dnsmos:
   model_path: models/sig_bak_ovr.onnx   # DNSMOS P.835 ONNX 文件路径

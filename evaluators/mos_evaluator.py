@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 from evaluators.base import BaseEvaluator
 
 SAMPLE_RATE = 16000
-CLIP_LEN = 9  # DNSMOS P.835 要求 9 秒输入
+CLIP_SAMPLES = 144160  # DNSMOS P.835 实际输入长度（9.01秒 × 16kHz）
 
 
 class MOSEvaluator(BaseEvaluator):
@@ -32,7 +32,7 @@ class MOSEvaluator(BaseEvaluator):
         if sr != SAMPLE_RATE:
             import librosa
             audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
-        target_len = CLIP_LEN * SAMPLE_RATE
+        target_len = CLIP_SAMPLES
         if len(audio) < target_len:
             audio = np.pad(audio, (0, target_len - len(audio)))
         else:
