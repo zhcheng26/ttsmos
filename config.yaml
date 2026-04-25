@@ -1,0 +1,29 @@
+# config.yaml
+device: cuda          # cuda 或 cpu
+batch_size: 16
+
+weights:
+  mos: 0.3
+  sim: 0.3
+  cer: 0.3
+  prosody: 0.1
+
+thresholds:
+  mos: 3.0            # MOS 低于此值触发规则A
+  sim: 0.7            # 相似度低于此值触发规则A
+  cer: 0.15           # CER 高于此值触发规则A（15%）
+  prosody: 0.5        # 韵律分低于此值触发规则A
+  weighted: 2.5       # 综合分低于此值触发规则B
+
+asr:
+  model: medium       # whisper 模型: tiny/base/small/medium/large-v3
+
+dnsmos:
+  model_path: models/sig_bak_ovr.onnx   # DNSMOS P.835 ONNX 文件路径
+
+paths:
+  ref: ref_dir/
+  sysA: sysA_dir/
+  sysB: sysB_dir/
+  target_text: target_text.txt
+  output: results/
