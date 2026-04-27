@@ -1,4 +1,5 @@
 # evaluators/similarity_evaluator.py
+import os
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -6,6 +7,10 @@ import soundfile as sf
 import librosa
 from pathlib import Path
 from typing import List, Dict, Any
+
+# 强制离线，防止网络请求
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 try:
     from speechbrain.inference.classifiers import EncoderClassifier
@@ -15,6 +20,10 @@ from evaluators.base import BaseEvaluator
 
 SAMPLE_RATE = 16000
 
+# 项目内模型路径（相对于项目根目录）
+_PROJECT_ROOT = Path(__file__).parent.parent
+_ECAPA_DIR = _PROJECT_ROOT / "models" / "speechbrain" / "spkrec-ecapa-voxceleb"
+
 
 class SimilarityEvaluator(BaseEvaluator):
     """使用 ECAPA-TDNN 计算合成音频与 ref 均值 embedding 的 cosine 相似度。"""
@@ -22,7 +31,8 @@ class SimilarityEvaluator(BaseEvaluator):
     def __init__(self, device: str = "cuda"):
         super().__init__(device)
         self.classifier = EncoderClassifier.from_hparams(
-            source="speechbrain/spkrec-ecapa-voxceleb",
+            source=str(_ECAPA_DIR),
+            savedir=str(_ECAPA_DIR),
             run_opts={"device": str(self.device)},
         )
         self.ref_embedding: torch.Tensor = None

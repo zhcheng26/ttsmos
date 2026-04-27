@@ -4,6 +4,10 @@
 启动: python app.py
 """
 import os
+
+# 禁止所有 HuggingFace / Transformers 网络请求，强制使用本地缓存
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 import yaml
 import gradio as gr
 import pandas as pd
