@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 COLUMN_ORDER = [
-    "file", "system", "mos_score", "sim_score", "cer",
+    "file", "system", "mos_score", "sim_score", "cer", "sent_acc",
     "prosody_score", "weighted_score", "is_bad", "bad_reason",
 ]
 

@@ -9,8 +9,8 @@ weights:
   prosody: 0.1
 
 thresholds:
-  mos: 3.0            # MOS 低于此值触发规则A
-  sim: 0.7            # 相似度低于此值触发规则A
+  mos: 4.2            # MOS 低于此值触发规则A（1-5 分制）
+  sim: 4.2            # 相似度低于此值触发规则A（0-5 分制）
   cer: 0.15           # CER 高于此值触发规则A（15%）
   prosody: 0.5        # 韵律分低于此值触发规则A
   weighted: 2.5       # 综合分低于此值触发规则B

@@ -16,18 +16,23 @@ class BadSampleFilter:
         row = dict(row)
         reasons: List[str] = []
 
-        # 规则A
-        if row.get("mos_score", 5.0) < self.th["mos"]:
+        # 规则A（值为 None 表示该维度不可用，跳过）
+        mos = row.get("mos_score")
+        if mos is not None and mos < self.th["mos"]:
             reasons.append("mos")
-        if row.get("sim_score", 1.0) < self.th["sim"]:
+        sim = row.get("sim_score")
+        if sim is not None and sim < self.th["sim"]:
             reasons.append("sim")
-        if row.get("cer", 0.0) > self.th["cer"]:
+        cer = row.get("cer")
+        if cer is not None and cer > self.th["cer"]:
             reasons.append("cer")
-        if row.get("prosody_score", 1.0) < self.th["prosody"]:
+        prosody = row.get("prosody_score")
+        if prosody is not None and prosody < self.th["prosody"]:
             reasons.append("prosody")
 
         # 规则B
-        if row.get("weighted_score", 5.0) < self.th["weighted"]:
+        weighted = row.get("weighted_score")
+        if weighted is not None and weighted < self.th["weighted"]:
             reasons.append("weighted")
 
         row["is_bad"] = len(reasons) > 0

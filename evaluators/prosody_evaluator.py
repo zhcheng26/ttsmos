@@ -42,9 +42,14 @@ class ProsodyEvaluator(BaseEvaluator):
         self.n_workers = n_workers or max(1, cpu_count() // 2)
         self.ref_f0_mean: float = 0.0
         self.ref_voiced_ratio: float = 0.0
+        self._has_ref: bool = False
 
     def build_ref_stats(self, ref_paths: List[Path]):
-        """预计算 ref 音频的平均 F0 均值和语速，在评测前必须调用一次。"""
+        """预计算 ref 音频的平均 F0 均值和语速。ref_paths 为空时跳过，prosody_score 将返回 None。"""
+        if not ref_paths:
+            self._has_ref = False
+            return
+        self._has_ref = True
         path_strs = [str(p) for p in ref_paths]
         with Pool(processes=self.n_workers) as pool:
             feats = pool.map(_extract_prosody_features, path_strs)
@@ -54,6 +59,10 @@ class ProsodyEvaluator(BaseEvaluator):
         self.ref_voiced_ratio = float(np.mean(voiced_ratios))
 
     def evaluate_batch(self, audio_paths: List[Path], **kwargs) -> List[Dict[str, Any]]:
+        # 无参考音频时返回 None，由聚合器跳过该维度
+        if not self._has_ref:
+            return [{"prosody_score": None} for _ in audio_paths]
+
         path_strs = [str(p) for p in audio_paths]
         with Pool(processes=self.n_workers) as pool:
             feats = pool.map(_extract_prosody_features, path_strs)

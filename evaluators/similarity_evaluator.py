@@ -55,7 +55,10 @@ class SimilarityEvaluator(BaseEvaluator):
         return F.normalize(emb, dim=-1)
 
     def build_ref_embedding(self, ref_paths: List[Path]):
-        """预计算 ref 均值 embedding，在评测前必须调用一次。"""
+        """预计算 ref 均值 embedding。ref_paths 为空时跳过，sim_score 将返回 None。"""
+        if not ref_paths:
+            self.ref_embedding = None
+            return
         embeddings = []
         for p in ref_paths:
             audio = self._load_audio(p)
@@ -64,13 +67,14 @@ class SimilarityEvaluator(BaseEvaluator):
         self.ref_embedding = F.normalize(self.ref_embedding, dim=-1)
 
     def evaluate_batch(self, audio_paths: List[Path], **kwargs) -> List[Dict[str, Any]]:
+        # 无参考音频时返回 None，由聚合器跳过该维度
         if self.ref_embedding is None:
-            raise RuntimeError("请先调用 build_ref_embedding() 构建参考 embedding")
+            return [{"sim_score": None} for _ in audio_paths]
         results = []
         for path in audio_paths:
             audio = self._load_audio(path)
             emb = self._get_embedding(audio)
             sim = F.cosine_similarity(emb, self.ref_embedding, dim=-1).item()
-            sim = float(max(0.0, min(1.0, (sim + 1.0) / 2.0)))  # [-1,1] → [0,1]
+            sim = float(max(0.0, min(5.0, ((sim + 1.0) / 2.0) * 5.0)))  # [-1,1] → [0,5]
             results.append({"sim_score": sim})
         return results

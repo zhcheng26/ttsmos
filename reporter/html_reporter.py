@@ -4,10 +4,28 @@ import plotly.graph_objects as go
 import plotly.express as px
 import plotly.io as pio
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
-DIMS = ["mos_score", "sim_score", "cer", "prosody_score", "weighted_score"]
-DIM_LABELS = ["MOS", "相似度", "CER", "韵律", "综合分"]
+DIMS = ["mos_score", "sim_score", "cer", "sent_acc", "prosody_score", "weighted_score"]
+DIM_LABELS = ["MOS", "相似度(0-5)", "CER", "句准", "韵律", "综合分"]
+
+
+def _fmt(val, fmt=".3f") -> str:
+    """将数值格式化为字符串；None / NaN 显示为 N/A。"""
+    if val is None:
+        return "N/A"
+    try:
+        if pd.isna(val):
+            return "N/A"
+    except (TypeError, ValueError):
+        pass
+    return format(val, fmt)
+
+
+def _safe_mean(series: pd.Series) -> Optional[float]:
+    """忽略 None/NaN 后求均值；全为空时返回 None。"""
+    valid = pd.to_numeric(series, errors="coerce").dropna()
+    return float(valid.mean()) if len(valid) > 0 else None
 
 
 class HTMLReporter:
@@ -40,7 +58,8 @@ class HTMLReporter:
         for sys in sorted(systems):
             sub = df[df["system"] == sys]
             row_vals = "".join(
-                f"<td>{sub[d].mean():.3f}</td>" for d in DIMS if d in sub.columns
+                f"<td>{_fmt(_safe_mean(sub[d]))}</td>"
+                for d in DIMS if d in sub.columns
             )
             rows_html += f"<tr><td><b>{sys}</b></td>{row_vals}</tr>"
         header = "".join(f"<th>{l}</th>" for l in DIM_LABELS)
@@ -51,16 +70,21 @@ class HTMLReporter:
         )
 
     def _radar_chart(self, df: pd.DataFrame) -> str:
-        categories = ["MOS/5", "相似度", "1-CER", "韵律", "综合分/5"]
+        categories = ["MOS/5", "相似度/5", "1-CER", "韵律", "综合分/5"]
         fig = go.Figure()
         for sys in sorted(df["system"].unique()):
             sub = df[df["system"] == sys]
+
+            def safe(col, transform=lambda x: x):
+                m = _safe_mean(sub[col]) if col in sub.columns else None
+                return transform(m) if m is not None else 0.0
+
             values = [
-                sub["mos_score"].mean() / 5.0 if "mos_score" in sub else 0,
-                sub["sim_score"].mean() if "sim_score" in sub else 0,
-                1.0 - sub["cer"].mean() if "cer" in sub else 0,
-                sub["prosody_score"].mean() if "prosody_score" in sub else 0,
-                sub["weighted_score"].mean() / 5.0 if "weighted_score" in sub else 0,
+                safe("mos_score", lambda x: x / 5.0),
+                safe("sim_score", lambda x: x / 5.0),
+                safe("cer", lambda x: 1.0 - x),
+                safe("prosody_score"),
+                safe("weighted_score", lambda x: x / 5.0),
             ]
             values.append(values[0])  # 闭合雷达图
             fig.add_trace(go.Scatterpolar(
@@ -80,8 +104,15 @@ class HTMLReporter:
         for dim, label in zip(DIMS, DIM_LABELS):
             if dim not in df.columns:
                 continue
+            col = pd.to_numeric(df[dim], errors="coerce")
+            if col.dropna().empty:
+                parts.append(f"<p>{label}：无数据（未提供参考音频）</p>")
+                continue
+            plot_df = df.copy()
+            plot_df[dim] = col
             fig = px.histogram(
-                df, x=dim, color="system", barmode="overlay",
+                plot_df.dropna(subset=[dim]),
+                x=dim, color="system", barmode="overlay",
                 title=f"{label} 分布", nbins=20,
             )
             parts.append(pio.to_html(fig, full_html=False, include_plotlyjs=False))
@@ -97,18 +128,19 @@ class HTMLReporter:
             rows_html += (
                 f"<tr style='{highlight}'>"
                 f"<td>{row['file']}</td><td>{row['system']}</td>"
-                f"<td>{row.get('mos_score', 0):.3f}</td>"
-                f"<td>{row.get('sim_score', 0):.3f}</td>"
-                f"<td>{row.get('cer', 0):.3f}</td>"
-                f"<td>{row.get('prosody_score', 0):.3f}</td>"
-                f"<td>{row.get('weighted_score', 0):.3f}</td>"
+                f"<td>{_fmt(row.get('mos_score'))}</td>"
+                f"<td>{_fmt(row.get('sim_score'))}</td>"
+                f"<td>{_fmt(row.get('cer'))}</td>"
+                f"<td>{_fmt(row.get('sent_acc'))}</td>"
+                f"<td>{_fmt(row.get('prosody_score'))}</td>"
+                f"<td>{_fmt(row.get('weighted_score'))}</td>"
                 f"<td>{row.get('bad_reason', '')}</td>"
                 f"</tr>"
             )
         return (
             "<h2>差样本列表（需人工复核）</h2>"
             "<table border='1' cellpadding='5'>"
-            "<tr><th>文件</th><th>系统</th><th>MOS</th><th>相似度</th>"
-            "<th>CER</th><th>韵律</th><th>综合分</th><th>触发原因</th></tr>"
+            "<tr><th>文件</th><th>系统</th><th>MOS</th><th>相似度(0-5)</th>"
+            "<th>CER</th><th>句准</th><th>韵律</th><th>综合分</th><th>触发原因</th></tr>"
             f"{rows_html}</table>"
         )

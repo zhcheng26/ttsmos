@@ -13,6 +13,7 @@ import gradio as gr
 import pandas as pd
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, Union, Dict, List
 
 from pipeline.loader import AudioPairLoader
 from pipeline.aggregator import ResultAggregator
@@ -43,32 +44,75 @@ def load_models(cfg: dict):
     return _models[key]
 
 
+def resolve_target_text(
+    raw: str, file_ids: List[str]
+) -> Union[None, str, Dict[str, Optional[str]]]:
+    """解析目标文本输入，返回三种形式之一：
+    - None：留空，跳过 CER/句准
+    - str：所有文件使用同一文本
+    - dict[file_id, str|None]：目录模式，按文件名逐一匹配 .txt
+    """
+    t = (raw or "").strip()
+    if not t:
+        return None
+
+    p = Path(t)
+    if p.is_dir():
+        text_map: Dict[str, Optional[str]] = {}
+        for fid in file_ids:
+            txt_file = p / f"{fid}.txt"
+            text_map[fid] = txt_file.read_text(encoding="utf-8").strip() if txt_file.exists() else None
+        return text_map
+
+    return t  # 单一文本字符串
+
+
+def get_batch_texts(
+    text_src: Union[None, str, Dict[str, Optional[str]]],
+    batch_ids: List[str],
+) -> Union[None, str, List[Optional[str]]]:
+    """将文本来源转换为当前 batch 所需格式。"""
+    if text_src is None or isinstance(text_src, str):
+        return text_src
+    return [text_src.get(fid) for fid in batch_ids]
+
+
 # ── 核心评测逻辑 ─────────────────────────────────────────────────────────────
 
 def run_evaluation(
     ref_dir, sysA_dir, sysB_dir,
-    target_text,
+    target_text_input,
     config_path,
     output_dir,
     progress=gr.Progress(),
 ):
     try:
-        # 加载配置
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
 
         progress(0.05, desc="加载音频配对...")
-        loader = AudioPairLoader(ref_dir=ref_dir, sysA_dir=sysA_dir, sysB_dir=sysB_dir)
+        loader = AudioPairLoader(ref_dir=ref_dir or None, sysA_dir=sysA_dir, sysB_dir=sysB_dir)
         pairs = loader.get_pairs()
         ref_paths = loader.get_ref_paths()
+        file_ids = [p["file_id"] for p in pairs]
 
         if not pairs:
             return None, None, "❌ 未找到匹配的音频对，请检查目录和文件名。", None
 
+        text_src = resolve_target_text(target_text_input, file_ids)
+        if text_src is None:
+            text_desc = "未提供目标文本，跳过 CER/句准"
+        elif isinstance(text_src, dict):
+            n_matched = sum(1 for v in text_src.values() if v)
+            text_desc = f"目录模式：{n_matched}/{len(file_ids)} 个文件匹配到文本"
+        else:
+            text_desc = f"统一文本：{text_src[:20]}..."
+
         progress(0.10, desc=f"找到 {len(pairs)} 对音频，初始化模型...")
         evs = load_models(cfg)
 
-        progress(0.20, desc="构建参考 embedding 和韵律统计...")
+        ref_desc = "构建参考 embedding 和韵律统计..." if ref_paths else "未提供参考音频，跳过 sim/prosody..."
+        progress(0.20, desc=ref_desc)
         evs["sim"].build_ref_embedding(ref_paths)
         evs["prosody"].build_ref_stats(ref_paths)
 
@@ -79,7 +123,6 @@ def run_evaluation(
         all_rows = []
         systems = [("sysA", [p["sysA_path"] for p in pairs]),
                    ("sysB", [p["sysB_path"] for p in pairs])]
-        file_ids = [p["file_id"] for p in pairs]
 
         for sys_idx, (sys_name, audio_paths) in enumerate(systems):
             base_progress = 0.30 + sys_idx * 0.30
@@ -92,13 +135,12 @@ def run_evaluation(
                     desc=f"评测 {sys_name} ({batch_start+len(batch_paths)}/{len(audio_paths)})...",
                 )
 
+                batch_texts = get_batch_texts(text_src, batch_ids)
                 with ThreadPoolExecutor(max_workers=3) as ex:
                     fut_mos = ex.submit(evs["mos"].evaluate_batch, batch_paths)
                     fut_sim = ex.submit(evs["sim"].evaluate_batch, batch_paths)
-                    fut_asr = ex.submit(
-                        evs["asr"].evaluate_batch, batch_paths,
-                        target_text=target_text.strip(),
-                    )
+                    fut_asr = ex.submit(evs["asr"].evaluate_batch, batch_paths,
+                                        target_text=batch_texts)
                 mos_r = fut_mos.result()
                 sim_r = fut_sim.result()
                 asr_r = fut_asr.result()
@@ -110,6 +152,7 @@ def run_evaluation(
                         "mos_score": mos_r[i]["mos_score"],
                         "sim_score": sim_r[i]["sim_score"],
                         "cer": asr_r[i]["cer"],
+                        "sent_acc": asr_r[i]["sent_acc"],
                         "prosody_score": pro_r[i]["prosody_score"],
                     }
                     row = aggregator.aggregate_row(row)
@@ -121,16 +164,14 @@ def run_evaluation(
         CSVReporter(out).write(all_rows)
         HTMLReporter(out).write(all_rows)
 
-        # 构造展示用 DataFrame
         df = pd.DataFrame(all_rows)
         display_cols = ["file", "system", "mos_score", "sim_score",
-                        "cer", "prosody_score", "weighted_score", "is_bad", "bad_reason"]
+                        "cer", "sent_acc", "prosody_score", "weighted_score", "is_bad", "bad_reason"]
         df_display = df[[c for c in display_cols if c in df.columns]]
 
-        # 系统均值对比
-        summary = df.groupby("system")[
-            ["mos_score", "sim_score", "cer", "prosody_score", "weighted_score"]
-        ].mean().round(4).reset_index()
+        score_cols = [c for c in ["mos_score", "sim_score", "cer", "sent_acc",
+                                   "prosody_score", "weighted_score"] if c in df.columns]
+        summary = df.groupby("system")[score_cols].mean().round(4).reset_index()
 
         bad_count = int(df["is_bad"].sum())
         html_path = out / "report.html"
@@ -138,6 +179,7 @@ def run_evaluation(
 
         status = (
             f"✅ 评测完成！共 {len(all_rows)} 条样本，差样本 {bad_count} 条。\n"
+            f"文本模式：{text_desc}\n"
             f"报告已保存至: {html_path}"
         )
         return df_display, summary, status, str(html_path)
@@ -153,16 +195,16 @@ def build_ui():
     with gr.Blocks(title="TTS 音质评测系统", theme=gr.themes.Soft()) as demo:
         gr.Markdown("""
 # 🎙️ TTS 音质评测系统
-多维度对比两个 TTS 系统的音频质量：MOS、说话人相似度、CER、韵律
+多维度对比两个 TTS 系统的音频质量：MOS、说话人相似度、CER、句准、韵律
         """)
 
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### 输入配置")
                 ref_dir = gr.Textbox(
-                    label="原声目录 (ref_dir)",
-                    placeholder="demo/data/ref",
-                    value="demo/data/ref",
+                    label="原声目录 (ref_dir)【可选】",
+                    placeholder="留空则跳过 sim/prosody 维度",
+                    value="",
                 )
                 sysA_dir = gr.Textbox(
                     label="系统A 目录 (sysA_dir)",
@@ -175,9 +217,9 @@ def build_ui():
                     value="demo/data/sysB",
                 )
                 target_text = gr.Textbox(
-                    label="目标文本（用于 CER 计算）",
-                    placeholder="输入合成的目标文本...",
-                    value="今天天气不错，我们一起去公园散步吧。",
+                    label="目标文本【可选】",
+                    placeholder="留空跳过CER/句准 | 输入文本统一使用 | 输入目录路径按文件名逐一匹配.txt",
+                    value="",
                     lines=3,
                 )
                 config_path = gr.Textbox(
@@ -195,7 +237,7 @@ def build_ui():
                 status_box = gr.Textbox(
                     label="状态",
                     interactive=False,
-                    lines=3,
+                    lines=4,
                 )
                 with gr.Tabs():
                     with gr.Tab("📊 全量结果"):
@@ -229,12 +271,20 @@ def build_ui():
 **维度说明**
 | 字段 | 含义 | 越好 |
 |------|------|------|
-| mos_score | DNSMOS 音质分 (1-5) | 越高越好 |
-| sim_score | 说话人相似度 (0-1) | 越高越好 |
+| mos_score | DNSMOS 音质分 (1-5) | 越高越好，需 > 4.2 |
+| sim_score | 说话人相似度 (0-5) | 越高越好，需 > 4.2 |
 | cer | 字错率 (0-1) | 越低越好 |
+| sent_acc | 句准 (0或1) | 1为完全正确 |
 | prosody_score | 韵律相似度 (0-1) | 越高越好 |
 | weighted_score | 综合加权分 (0-5) | 越高越好 |
 | is_bad | 是否需人工复核 | False 为优 |
+
+**目标文本三种模式**
+| 输入方式 | 效果 |
+|----------|------|
+| 留空 | 跳过 CER 和句准，结果显示 N/A |
+| 直接输入文本 | 所有音频使用同一参考文本 |
+| 输入目录路径 | 按音频文件名匹配同名 .txt 文件（如 sample_001.txt）|
         """)
 
     return demo

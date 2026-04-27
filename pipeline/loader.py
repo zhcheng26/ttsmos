@@ -4,12 +4,15 @@ from typing import List, Dict
 
 
 class AudioPairLoader:
-    """按文件名（去扩展名）匹配 sysA/sysB 音频对，加载 ref 目录路径池。"""
+    """按文件名（去扩展名）匹配 sysA/sysB 音频对，加载 ref 目录路径池。
+
+    ref_dir 可为空字符串或 None，此时跳过参考音频相关维度（sim/prosody）。
+    """
 
     AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg"}
 
     def __init__(self, ref_dir, sysA_dir, sysB_dir):
-        self.ref_dir = Path(ref_dir)
+        self.ref_dir = Path(ref_dir) if ref_dir else None
         self.sysA_dir = Path(sysA_dir)
         self.sysB_dir = Path(sysB_dir)
         self._pairs: List[Dict] = []
@@ -35,10 +38,13 @@ class AudioPairLoader:
             }
             for fid in common
         ]
-        self._ref_paths = sorted(
-            p for p in self.ref_dir.iterdir()
-            if p.suffix.lower() in self.AUDIO_EXTS
-        )
+        if self.ref_dir and self.ref_dir.exists():
+            self._ref_paths = sorted(
+                p for p in self.ref_dir.iterdir()
+                if p.suffix.lower() in self.AUDIO_EXTS
+            )
+        else:
+            self._ref_paths = []
 
     def get_pairs(self) -> List[Dict]:
         return self._pairs

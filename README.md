@@ -72,6 +72,19 @@ python run_eval.py \
     --output results/
 ```
 
+**无参考音频时**（只评测 MOS + CER，跳过说话人相似度和韵律）：
+
+```bash
+python run_eval.py \
+    --sysA demo/data/sysA \
+    --sysB demo/data/sysB \
+    --text demo/data/target_text.txt \
+    --config config.yaml \
+    --output results/
+```
+
+> `--ref` 为可选参数。Web UI 中"原声目录"留空效果相同。
+
 ---
 
 ## 音频文件要求
@@ -80,7 +93,7 @@ python run_eval.py \
 |------|------|
 | 格式 | `.wav` / `.flac` / `.mp3` / `.ogg` |
 | sysA 与 sysB 文件名 | 必须一一对应（相同文件名，不含扩展名） |
-| ref 目录 | 任意数量的原声音频，用于计算说话人相似度和韵律基准 |
+| ref 目录 | **可选**。提供时计算说话人相似度和韵律；不提供时这两个维度输出 `None`，加权分仅由 MOS + CER 决定 |
 | 采样率 | 任意（内部自动重采样至 16 kHz） |
 
 ---
@@ -99,8 +112,8 @@ weights:              # 各维度加权系数（归一化后使用）
   prosody: 0.1
 
 thresholds:           # 差样本判定阈值
-  mos: 3.0            # MOS 低于此值 → 标记为差样本
-  sim: 0.7            # 说话人相似度低于此值 → 标记为差样本
+  mos: 4.2            # MOS 低于此值 → 标记为差样本（1-5 分制）
+  sim: 4.2            # 说话人相似度低于此值 → 标记为差样本（0-5 分制）
   cer: 0.15           # 字错率高于 15% → 标记为差样本
   prosody: 0.5        # 韵律分低于此值 → 标记为差样本
   weighted: 2.5       # 综合加权分低于此值 → 标记为差样本
@@ -119,8 +132,8 @@ dnsmos:
 
 | 字段 | 模型 | 含义 | 分值范围 | 越好 |
 |------|------|------|----------|------|
-| `mos_score` | DNSMOS P.835 | 音质主观感受分 | 1 ~ 5 | 越高越好 |
-| `sim_score` | ECAPA-TDNN | 与原声说话人的余弦相似度 | 0 ~ 1 | 越高越好 |
+| `mos_score` | DNSMOS P.835 | 音质主观感受分 | 1 ~ 5 | 越高越好，需 > 4.2 |
+| `sim_score` | ECAPA-TDNN | 与原声说话人的相似度 | 0 ~ 5 | 越高越好，需 > 4.2 |
 | `cer` | Whisper | 字错率（与目标文本对比） | 0 ~ 1 | 越低越好 |
 | `prosody_score` | librosa | 基频均值 + 语速与原声的相似度 | 0 ~ 1 | 越高越好 |
 | `weighted_score` | — | 各维度加权综合分 | 0 ~ 5 | 越高越好 |
