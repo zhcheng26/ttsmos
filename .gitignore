@@ -1,3 +1,7 @@
 results/
 __pycache__/
 *.pyc
+
+# 超过 GitHub LFS 2GB 限制的大模型，使用 scripts/download_large_models.py 下载
+models/whisper/large-v2.pt
+models/whisper/large-v3.pt

@@ -16,7 +16,8 @@ thresholds:
   weighted: 2.5       # 综合分低于此值触发规则B
 
 asr:
-  model: tiny         # whisper 模型: tiny/base/small/medium/large-v3（演示用tiny，生产换medium）
+  model: medium       # whisper 模型: tiny/base/small/medium/large-v3
+                      # large-v2/large-v3 超过 GitHub LFS 限制，需运行 scripts/download_large_models.py 后手动切换
 
 dnsmos:
   model_path: models/sig_bak_ovr.onnx   # DNSMOS P.835 ONNX 文件路径
